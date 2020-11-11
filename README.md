@@ -1,6 +1,6 @@
 # Code accompanying twitter threads by Kaspar Rufibach
 
-* [Why do we use group-sequential designs?](https://numbersman77.github.io/20201111_GSD/GSD.html)
+* [Why do we use group-sequential designs?](https://rufi77.github.io/20201111_GSD/GSD.html)
 
 Author: 
 
