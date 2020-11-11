@@ -1575,22 +1575,267 @@ div.tocify {
 
 <div id="purpose-of-this-document" class="section level1">
 <h1>Purpose of this document</h1>
-<p>This R markdown file accompanies the twitter thread <a href></a> and provides the code to reproduce all computations.</p>
+<p>This R markdown file accompanies the twitter thread <a href></a> and provides the code to reproduce all computations. It heavily borrows from code within the <a href="http://www.rpact.org">rpact project</a>.</p>
+<p>A much more comprehensive description is available in this <a href="https://vignettes.rpact.org/html/rpact_survival_examples.html#8_Sample_size_calculation_for_trials_with_interim_analyses">rpact vignette</a>.</p>
 </div>
 <div id="setup" class="section level1">
 <h1>Setup</h1>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb1-1" data-line-number="1"><span class="co"># --------------------------------------------------------------</span></a>
 <a class="sourceLine" id="cb1-2" data-line-number="2"><span class="co"># packages</span></a>
 <a class="sourceLine" id="cb1-3" data-line-number="3"><span class="co"># --------------------------------------------------------------</span></a>
-<a class="sourceLine" id="cb1-4" data-line-number="4">packs &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;rpact&quot;</span>, <span class="st">&quot;knitr&quot;</span>)    </a>
+<a class="sourceLine" id="cb1-4" data-line-number="4">packs &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;rpact&quot;</span>, <span class="st">&quot;reporttools&quot;</span>)    </a>
 <a class="sourceLine" id="cb1-5" data-line-number="5"><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span><span class="kw">length</span>(packs)){<span class="kw">library</span>(packs[i], <span class="dt">character.only =</span> <span class="ot">TRUE</span>)}</a></code></pre></div>
+<pre><code>## Loading required package: xtable</code></pre>
 </div>
 <div id="code" class="section level1">
 <h1>Code</h1>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" data-line-number="1"><span class="co"># --------------------------------------------------------------</span></a></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" data-line-number="1"><span class="co"># --------------------------------------------------------------</span></a>
+<a class="sourceLine" id="cb3-2" data-line-number="2"><span class="co"># trial basics</span></a>
+<a class="sourceLine" id="cb3-3" data-line-number="3"><span class="co"># --------------------------------------------------------------</span></a>
+<a class="sourceLine" id="cb3-4" data-line-number="4">alpha &lt;-<span class="st"> </span><span class="fl">0.05</span></a>
+<a class="sourceLine" id="cb3-5" data-line-number="5">beta &lt;-<span class="st"> </span><span class="fl">0.2</span></a>
+<a class="sourceLine" id="cb3-6" data-line-number="6"></a>
+<a class="sourceLine" id="cb3-7" data-line-number="7"><span class="co"># effect size and medians</span></a>
+<a class="sourceLine" id="cb3-8" data-line-number="8">m1 &lt;-<span class="st"> </span><span class="dv">60</span></a>
+<a class="sourceLine" id="cb3-9" data-line-number="9">hr &lt;-<span class="st"> </span><span class="fl">0.75</span></a>
+<a class="sourceLine" id="cb3-10" data-line-number="10">m2 &lt;-<span class="st"> </span>m1 <span class="op">/</span><span class="st"> </span>hr</a>
+<a class="sourceLine" id="cb3-11" data-line-number="11"></a>
+<a class="sourceLine" id="cb3-12" data-line-number="12"><span class="co"># required events for single-stage design, i.e. without interim</span></a>
+<a class="sourceLine" id="cb3-13" data-line-number="13">nevent &lt;-<span class="st"> </span><span class="kw">getSampleSizeSurvival</span>(<span class="dt">hazardRatio =</span> hr, <span class="dt">sided =</span> <span class="dv">2</span>, <span class="dt">alpha =</span> alpha, <span class="dt">beta =</span> beta)</a>
+<a class="sourceLine" id="cb3-14" data-line-number="14">nevent &lt;-<span class="st"> </span><span class="kw">ceiling</span>(nevent<span class="op">$</span>maxNumberOfEvents)</a></code></pre></div>
+<p>So for a single stage design we need 380 events <strong>in any case</strong>, i.e. even if the effect is much smaller or larger than what we assume for powering (hazard ratio = 0.75).</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb4-1" data-line-number="1"><span class="co"># information fractions after which to perform interim looks</span></a>
+<a class="sourceLine" id="cb4-2" data-line-number="2">info &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="fl">0.3</span>, <span class="fl">0.66</span>, <span class="dv">1</span>)</a></code></pre></div>
+<p>Now generate a design where you add a futility interim after 30% of events and an interim for efficacy after 66% of events. At the futility interim, the trial will be stopped if the hazard ratio is below 1 and for effiacy we use an O’Brian-Fleming type <span class="math inline">\(\alpha\)</span>-spending function (or rather the Lan-DeMets approximation to it).</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb5-1" data-line-number="1"><span class="co"># OBF design without initial interim at 30% (to get cumulative alpha-spending function for these visits)</span></a>
+<a class="sourceLine" id="cb5-2" data-line-number="2">design1 &lt;-<span class="st"> </span><span class="kw">getDesignGroupSequential</span>(<span class="dt">sided =</span> <span class="dv">1</span>, <span class="dt">alpha =</span> alpha <span class="op">/</span><span class="st"> </span><span class="dv">2</span>, <span class="dt">beta =</span> beta, </a>
+<a class="sourceLine" id="cb5-3" data-line-number="3">                                   <span class="dt">informationRates =</span> info[<span class="op">-</span><span class="dv">1</span>],</a>
+<a class="sourceLine" id="cb5-4" data-line-number="4">                                   <span class="dt">typeOfDesign =</span> <span class="st">&quot;asOF&quot;</span>)</a>
+<a class="sourceLine" id="cb5-5" data-line-number="5"></a>
+<a class="sourceLine" id="cb5-6" data-line-number="6"><span class="co"># now spend very little alpha at first interim --&gt; interim stopping not an option</span></a>
+<a class="sourceLine" id="cb5-7" data-line-number="7"><span class="co"># -6 codifies &quot;no futility&quot; at the 2nd interim</span></a>
+<a class="sourceLine" id="cb5-8" data-line-number="8">design &lt;-<span class="st"> </span><span class="kw">getDesignGroupSequential</span>(<span class="dt">futilityBounds =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="dv">-6</span>), <span class="dt">bindingFutility =</span> <span class="ot">FALSE</span>,</a>
+<a class="sourceLine" id="cb5-9" data-line-number="9">                                    <span class="dt">informationRates =</span> info, <span class="dt">typeOfDesign =</span> <span class="st">&quot;asUser&quot;</span>,</a>
+<a class="sourceLine" id="cb5-10" data-line-number="10">                                    <span class="dt">userAlphaSpending =</span> <span class="kw">c</span>(<span class="fl">0.0000001</span>, design1<span class="op">$</span>alphaSpent))</a>
+<a class="sourceLine" id="cb5-11" data-line-number="11"></a>
+<a class="sourceLine" id="cb5-12" data-line-number="12">samplesize &lt;-<span class="st"> </span><span class="kw">getSampleSizeSurvival</span>(<span class="dt">design =</span> design, <span class="dt">lambda2 =</span> <span class="kw">log</span>(<span class="dv">2</span>) <span class="op">/</span><span class="st"> </span>m1, <span class="dt">hazardRatio =</span> hr,</a>
+<a class="sourceLine" id="cb5-13" data-line-number="13">                                    <span class="dt">dropoutRate1 =</span> <span class="fl">0.025</span>, <span class="dt">dropoutRate2 =</span> <span class="fl">0.025</span>, <span class="dt">dropoutTime =</span> <span class="dv">12</span>,</a>
+<a class="sourceLine" id="cb5-14" data-line-number="14">                                    <span class="dt">accrualTime =</span> <span class="dv">0</span>, <span class="dt">accrualIntensity =</span> <span class="dv">42</span>, <span class="dt">maxNumberOfSubjects =</span> <span class="dv">1200</span>)</a>
+<a class="sourceLine" id="cb5-15" data-line-number="15">samplesize</a></code></pre></div>
+<pre><code>## Design plan parameters and output for survival data:
+## 
+## Design parameters:
+##   Significance level                           : 0.0250 
+##   Type II error rate                           : 0.2000 
+##   Test                                         : one-sided 
+## 
+## User defined parameters:
+##   lambda(2)                                    : 0.0116 
+##   Hazard ratio                                 : 0.750 
+##   Maximum number of subjects                   : 1200.0 
+##   Accrual intensity                            : 42.0 
+##   Drop-out rate (1)                            : 0.025 
+##   Drop-out rate (2)                            : 0.025 
+## 
+## Default parameters:
+##   Type of computation                          : Schoenfeld 
+##   Theta H0                                     : 1 
+##   Planned allocation ratio                     : 1 
+##   kappa                                        : 1 
+##   Piecewise survival times                     : 0.00 
+##   Drop-out time                                : 12.00 
+## 
+## Sample size and output:
+##   Direction upper                              : FALSE 
+##   median(1)                                    : 80.0 
+##   median(2)                                    : 60.0 
+##   lambda(1)                                    : 0.00866 
+##   Maximum number of subjects (1)               : 600.0 
+##   Maximum number of subjects (2)               : 600.0 
+##   Maximum number of events                     : 407.7 
+##   Accrual time                                 : 28.57 
+##   Follow up time                               : 29.62 
+##   Information rates [1]                        : 0.300 
+##   Information rates [2]                        : 0.660 
+##   Information rates [3]                        : 1.000 
+##   Analysis times [1]                           : 25.26 
+##   Analysis times [2]                           : 40.65 
+##   Analysis times [3]                           : 58.19 
+##   Expected study duration under H1             : 48.75 
+##   Maximal study duration                       : 58.19 
+##   Cumulative number of events [1]              : 122.3 
+##   Cumulative number of events [2]              : 269.1 
+##   Cumulative number of events [3]              : 407.7 
+##   Expected number of events under H0           : 264.2 
+##   Expected number of events under H0/H1        : 334.6 
+##   Expected number of events under H1           : 331.7 
+##   Number of subjects [1]                       : 1060.9 
+##   Number of subjects [2]                       : 1200.0 
+##   Number of subjects [3]                       : 1200.0 
+##   Expected number of subjects under H1         : 1192.2 
+##   Reject per stage [1]                         : 0.000154 
+##   Reject per stage [2]                         : 0.433149 
+##   Reject per stage [3]                         : 0.366697 
+##   Futility stop per stage [1]                  : 0.05582 
+##   Futility stop per stage [2]                  : 2.859e-13 
+##   Futility stop                                : 0.0558 
+##   Early stop                                   : 0.4891 
+##   Critical values (effect scale) [1]           : 0.391 
+##   Critical values (effect scale) [2]           : 0.735 
+##   Critical values (effect scale) [3]           : 0.821 
+##   Local one-sided significance levels [1]      : 0.0000001 
+##   Local one-sided significance levels [2]      : 0.0057983 
+##   Local one-sided significance levels [3]      : 0.0232096 
+##   Futility bounds (effect scale) [1]           : 1.000 
+##   Futility bounds (effect scale) [2]           : 2.078 
+##   Futility bounds (1-sided p-value scale) [1]  : 0.5000 
+##   Futility bounds (1-sided p-value scale) [2]  : 1.0000 
+## 
+## Legend:
+##   (i): values of treatment arm i
+##   [k]: values at stage k</code></pre>
+<p>So adding these interims (and not accounting for the power loss induced through adding the futility!) increases the number of events from 380 to 408 - only a slight increase.</p>
+<p>Note that at the second interim stopping for futility is not foreseen anymore (the <code>-6</code> for <code>futilityBounds</code> enforces that).</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb7-1" data-line-number="1"><span class="co"># information fractions after which to perform interim looks</span></a>
+<a class="sourceLine" id="cb7-2" data-line-number="2">nevents_i1 &lt;-<span class="st"> </span><span class="kw">ceiling</span>(info <span class="op">*</span><span class="st"> </span>samplesize<span class="op">$</span>maxNumberOfEvents)</a>
+<a class="sourceLine" id="cb7-3" data-line-number="3">nevents_i1</a></code></pre></div>
+<pre><code>## [1] 123 270 408</code></pre>
+<p>Now the key is that when using a group-sequential design, or say if we run 100 of them, some of them will actually stop at the first or second interim. We can compute the probabilities for that happening as follows:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb9-1" data-line-number="1"><span class="co"># stopping probabilities at futility and efficacy interim under H0 and H1</span></a>
+<a class="sourceLine" id="cb9-2" data-line-number="2">designChar &lt;-<span class="st"> </span><span class="kw">getDesignCharacteristics</span>(design)</a>
+<a class="sourceLine" id="cb9-3" data-line-number="3">stopProbsH0 &lt;-<span class="st"> </span><span class="kw">getPowerAndAverageSampleNumber</span>(design, <span class="dt">theta =</span> <span class="dv">0</span>, <span class="dt">nMax =</span> designChar<span class="op">$</span>shift)</a>
+<a class="sourceLine" id="cb9-4" data-line-number="4">stopProbsH1 &lt;-<span class="st"> </span><span class="kw">getPowerAndAverageSampleNumber</span>(design, <span class="dt">theta =</span> <span class="dv">1</span>, <span class="dt">nMax =</span> designChar<span class="op">$</span>shift)</a>
+<a class="sourceLine" id="cb9-5" data-line-number="5"></a>
+<a class="sourceLine" id="cb9-6" data-line-number="6">stopFutIA_H0 &lt;-<span class="st"> </span>stopProbsH0<span class="op">$</span>earlyStop[<span class="st">&quot;stage = 1&quot;</span>, <span class="dv">1</span>]</a>
+<a class="sourceLine" id="cb9-7" data-line-number="7">stopEffIA_H0 &lt;-<span class="st"> </span>stopProbsH0<span class="op">$</span>earlyStop[<span class="st">&quot;stage = 2&quot;</span>, <span class="dv">1</span>]</a>
+<a class="sourceLine" id="cb9-8" data-line-number="8"></a>
+<a class="sourceLine" id="cb9-9" data-line-number="9">stopFutIA_H1 &lt;-<span class="st"> </span>stopProbsH1<span class="op">$</span>earlyStop[<span class="st">&quot;stage = 1&quot;</span>, <span class="dv">1</span>]</a>
+<a class="sourceLine" id="cb9-10" data-line-number="10">stopEffIA_H1 &lt;-<span class="st"> </span>stopProbsH1<span class="op">$</span>earlyStop[<span class="st">&quot;stage = 2&quot;</span>, <span class="dv">1</span>]</a>
+<a class="sourceLine" id="cb9-11" data-line-number="11"></a>
+<a class="sourceLine" id="cb9-12" data-line-number="12"><span class="co"># probability to stop at the futility interim, under H0 and H1</span></a>
+<a class="sourceLine" id="cb9-13" data-line-number="13"><span class="kw">c</span>(stopFutIA_H0, stopFutIA_H1)</a></code></pre></div>
+<pre><code>##  stage = 1  stage = 1 
+## 0.50000010 0.05597219</code></pre>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb11-1" data-line-number="1"><span class="co"># probability to stop at the efficacy interim, under H0 and H1</span></a>
+<a class="sourceLine" id="cb11-2" data-line-number="2"><span class="kw">c</span>(stopEffIA_H0, stopEffIA_H1)</a></code></pre></div>
+<pre><code>## stage = 2 stage = 2 
+## 0.0057649 0.4331487</code></pre>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb13-1" data-line-number="1"><span class="co"># Expected number of events under H0 and H1 </span></a>
+<a class="sourceLine" id="cb13-2" data-line-number="2">expH0 &lt;-<span class="st"> </span>samplesize<span class="op">$</span>expectedEventsH0</a>
+<a class="sourceLine" id="cb13-3" data-line-number="3">expH1 &lt;-<span class="st"> </span>samplesize<span class="op">$</span>expectedEventsH1</a></code></pre></div>
+<p>Now the point is that if we stop at an interim we will need less events, because we would stop the trial then. The **expected number of events* can be computed as follows:</p>
+<ul>
+<li>Under <span class="math inline">\(H_0\)</span>: 0.500 <span class="math inline">\(\cdot\)</span> 123 + 0.006 <span class="math inline">\(\cdot\)</span> 270 + 0.494 <span class="math inline">\(\cdot\)</span> 408 = 264.</li>
+<li>Under <span class="math inline">\(H_1\)</span>: 0.056 <span class="math inline">\(\cdot\)</span> 123 + 0.433 <span class="math inline">\(\cdot\)</span> 270 + 0.511 <span class="math inline">\(\cdot\)</span> 408 = 332.</li>
+</ul>
+<p>So if we use the specified group-sequential design and in fact, our intervention does not work at all (<span class="math inline">\(H_0\)</span> is true), then on average we only need 264 instead of the 380 events in a single-stage design.</p>
+<p>Under <span class="math inline">\(H_1\)</span>, i.e. if the drug works as assumed for powering the trial, we then need on average only 332 events to show that, i.e. reject the null hypothesis of the hazard ratio being equal to 0. This is the point of group-sequential designs: the maximal number of events in a given trial is slightly increased, but the average number of events over a portfolio of trials is reduced.</p>
+<p>Now, what effect size do we need to observe at the efficacy interim to stop the trial, based on an O’Brien-Fleming <span class="math inline">\(\alpha\)</span>-spending function? We can easily extract that number from the above output as follows:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb14-1" data-line-number="1"><span class="co"># critical values on effect, i.e. hazard ratio, scale</span></a>
+<a class="sourceLine" id="cb14-2" data-line-number="2">crit1 &lt;-<span class="st"> </span><span class="kw">t</span>(<span class="kw">disp</span>(samplesize<span class="op">$</span>criticalValuesEffectScale, <span class="dv">3</span>))</a>
+<a class="sourceLine" id="cb14-3" data-line-number="3">crit1</a></code></pre></div>
+<pre><code>##      [,1]    [,2]    [,3]   
+## [1,] &quot;0.391&quot; &quot;0.735&quot; &quot;0.821&quot;</code></pre>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb16-1" data-line-number="1"><span class="co"># 2-sided significance levels on p-value scale</span></a>
+<a class="sourceLine" id="cb16-2" data-line-number="2">crit2 &lt;-<span class="st"> </span><span class="kw">disp</span>(samplesize<span class="op">$</span>criticalValuesPValueScale <span class="op">*</span><span class="st"> </span><span class="dv">2</span>, <span class="dv">3</span>)</a>
+<a class="sourceLine" id="cb16-3" data-line-number="3">crit2</a></code></pre></div>
+<pre><code>## [1] &quot;0.0000002&quot; &quot;0.012&quot;     &quot;0.046&quot;</code></pre>
+<p>So this means that after 66% of events, in order to get a <span class="math inline">\(p\)</span>-value below the pre-specified boundary of 0.012 the hazard ratio must be below 0.735. The latter is what sometimes is called <strong>minimal detectable difference</strong>, MDD. Two observations can be made from that:</p>
+<ul>
+<li>Often, people believe in order to stop a trial early the effect seen at the interim must be <strong>much larger</strong> than what we assumed for powering. Comparing 0.75 to 0.735 it is clear that this is not the case. That the MDD at interim and the effect we power at are approximately the same is typically the case for an O’Brien-Fleming boundary and an interim after about 2/3 of information.</li>
+<li>Another common belief is that in order to be significant at the interim we need to observe a hazard ratio <span class="math inline">\(\le 0.75\)</span>. Again, this is not true: the MDD at the final analysis actually is 0.821, i.e. in order to get a <span class="math inline">\(p\)</span>-value of 0.046 or lower this is the hazard ratio we need to beat.</li>
+</ul>
 </div>
-<div id="references" class="section level1">
-<h1>References</h1>
+<div id="inference-after-early-stopping" class="section level1">
+<h1>Inference after early stopping</h1>
+<p>See this <a href="https://vignettes.rpact.org/html/rpact_analysis_examples.html">rpact vignette</a> for further details.</p>
+<div id="conventional-analyses-at-the-first-and-second-interim-analysis" class="section level2">
+<h2>Conventional analyses at the first and second interim analysis</h2>
+<p>Assume the following results from standard inference at the <strong>futility interim analysis performed after 123 events</strong> have been observed:</p>
+<ul>
+<li>Stratified HR 0.69 (95% CI 0.47 to 1.01). <span class="math inline">\(\Rightarrow\)</span> this was <span class="math inline">\(\le 1\)</span>, so <strong>trial continues.</strong></li>
+<li>log(HR) = log(0.69) with standard error 0.20.</li>
+<li>Corresponding Z-score: log(0.69)/0.20 = -1.86.</li>
+</ul>
+<p>Results from standard inference at the <strong>efficacy interim analysis after 270 events</strong>:</p>
+<ul>
+<li>Stratified HR 0.66 (95% CI 0.51 to 0.85).</li>
+<li>log(HR) = log(0.66) with standard error 0.13.</li>
+<li>Corresponding Z-score: log(0.66)/0.13 = -3.225.</li>
+<li>Two-sided p-value is 0.0012 which was smaller than the critical value from the O’Brien-Fleming boundary of 0.012. <span class="math inline">\(\Rightarrow\)</span> <strong>Trial stopped early for efficacy</strong>.</li>
+</ul>
+</div>
+<div id="analysis-accounting-for-the-group-sequential-design" class="section level2">
+<h2>Analysis accounting for the group-sequential design</h2>
+<p>The <strong>results after the first and second interim</strong> are specified using the function <code>getDataset</code>:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb18-1" data-line-number="1"><span class="co"># overallLogRanks: One-sided logrank statistic or Z-score (= log(HR) / SE) from Cox regression</span></a>
+<a class="sourceLine" id="cb18-2" data-line-number="2">results &lt;-<span class="st"> </span><span class="kw">getDataset</span>(</a>
+<a class="sourceLine" id="cb18-3" data-line-number="3">    <span class="dt">overallEvents =</span> nevents_i1[<span class="dv">1</span><span class="op">:</span><span class="dv">2</span>],</a>
+<a class="sourceLine" id="cb18-4" data-line-number="4">    <span class="dt">overallLogRanks =</span> <span class="kw">c</span>(<span class="op">-</span><span class="fl">1.86</span>, <span class="fl">-3.225</span>),</a>
+<a class="sourceLine" id="cb18-5" data-line-number="5">    <span class="dt">overallAllocationRatio =</span> <span class="kw">c</span>(<span class="dv">1</span>, <span class="dv">1</span>))</a></code></pre></div>
+<p>Finally, this is used for creating the <strong>adjusted inference</strong> using the function <code>getAnalysisResults</code> (<code>directionUpper = FALSE</code> is specified because the power is directed towards negative values of the logrank statistics):</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb19-1" data-line-number="1">adj_result &lt;-<span class="st"> </span><span class="kw">getAnalysisResults</span>(<span class="dt">design =</span> design, </a>
+<a class="sourceLine" id="cb19-2" data-line-number="2">    <span class="dt">dataInput =</span> results, <span class="dt">stage =</span> <span class="dv">2</span>, <span class="dt">directionUpper =</span> <span class="ot">FALSE</span>)</a></code></pre></div>
+<pre><code>## [PROGRESS] Stage results calculated [0.0195 secs] 
+## [PROGRESS] Conditional power calculated [0.0208 secs] 
+## [PROGRESS] Conditional rejection probabilities (CRP) calculated [0.0016 secs] 
+## [PROGRESS] Repeated confidence interval of stage 1 calculated [0.5982 secs] 
+## [PROGRESS] Repeated confidence interval of stage 2 calculated [0.4388 secs] 
+## [PROGRESS] Repeated confidence interval calculated [1.0387 secs]</code></pre>
+<pre><code>## Warning: Repeated p-values not available for 'typeOfDesign' = 'asUser'</code></pre>
+<pre><code>## [PROGRESS] Repeated p-values calculated [0.0017 secs] 
+## [PROGRESS] Final p-value calculated [0.002 secs] 
+## [PROGRESS] Final confidence interval calculated [0.0569 secs]</code></pre>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb23-1" data-line-number="1">adj_result</a></code></pre></div>
+<pre><code>## Analysis results (survival data of 2 groups, group sequential design):
+## 
+## Design parameters:
+##   Information rates                            : 0.300, 0.660, 1.000 
+##   Critical values                              : 5.199, 2.524, 1.992 
+##   Futility bounds (non-binding)                : 0.000, -Inf 
+##   Cumulative alpha spending                    : 0.0000001, 0.0057983, 0.0250000 
+##   Local one-sided significance levels          : 0.0000001, 0.0057983, 0.0232096 
+## 
+## User defined parameters:
+##   Direction upper                              : FALSE 
+## 
+## Default parameters:
+##   Normal approximation                         : TRUE 
+##   Theta H0                                     : 1 
+##   Planned sample size                          : NA, NA, NA 
+##   Planned allocation ratio                     : 1 
+## 
+## Stage results:
+##   Overall effect sizes                         : 0.7150, 0.6753, NA 
+##   Log-ranks                                    : -1.860, -2.669, NA 
+##   p-values                                     : 0.03144, 0.00380, NA 
+##   Overall log-ranks                            : -1.860, -3.225, NA 
+##   Overall p-values                             : 0.0314428, 0.0006299, NA 
+## 
+## Analysis results:
+##   Assumed effect under alternative             : 0.6753 
+##   Actions                                      : continue, reject and stop, NA 
+##   Conditional rejection probability            : 0.1359, 0.8594, NA 
+##   Conditional power                            : NA, NA, NA 
+##   RCIs (lower)                                 : 0.2800, 0.4967, NA 
+##   RCIs (upper)                                 : 1.8261, 0.9182, NA 
+##   Repeated p-values                            : NA, NA, NA 
+##   Final stage                                  : 2 
+##   Final p-value                                : NA, 0.0006299, NA 
+##   Final CIs (lower)                            : NA, 0.532, NA 
+##   Final CIs (upper)                            : NA, 0.8573, NA 
+##   Median unbiased estimate                     : NA, 0.6753, NA</code></pre>
+<p>The output is explained as follows:</p>
+<ul>
+<li><code>Critical values</code> are group-sequential efficacy boundary values on the <span class="math inline">\(Z\)</span>-scale, <code>stage levels</code> are the corresponding one-sided local significance levels.</li>
+<li><code>Effect sizes</code>, <code>Test statistics</code>, and <code>p-values</code> refer to hazard ratio estimates, <span class="math inline">\(Z\)</span>-scores, and <span class="math inline">\(p\)</span>-values obtained from the first interim analysis and results which would have been obtained after the second interim analysis if not all data up to the second interim analysis but only new data since the first interim had been included (i.e., per-stage results).</li>
+<li><code>Overall test statistics</code> are the given (overall, not per-stage) <span class="math inline">\(Z\)</span>-scores from each interim and <code>Overall p-value</code> the corresponding one-sided <span class="math inline">\(p\)</span>-values.</li>
+<li><code>RCIs</code> are repeated confidence intervals which provide valid (but conservative) inference at any stage of an ongoing or stopped group-sequential trial. <code>Repeated p-values</code> are the corresponding <span class="math inline">\(p\)</span>-values.</li>
+<li><code>Final p-value</code> is the <strong>final one-sided adjusted <span class="math inline">\(p\)</span>-value</strong> based on the stagewise ordering of the sample space.</li>
+<li><code>Median unbiased estimate</code> and <code>Final CIs</code> are the corresponding <strong>adjusted treatment effect estimate</strong> and the <strong>confidence interval</strong> for the hazard ratio at the interim analysis where the trial was stopped.</li>
+</ul>
+<p>Note that for this example, the <strong>adjusted final hazard ratio of 0.68 and the adjusted confidence interval of (0.53, 0.86) match the results from the conventional analysis almost exactly for the first two decimals.</strong></p>
+</div>
 </div>
 
 
