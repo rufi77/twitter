@@ -1,0 +1,40 @@
+---
+title: "Why do we use group-sequential designs?"
+author: "Kaspar Rufibach"
+date: "Last change: `r format(Sys.time(), '%dth %B %Y')`"
+output: 
+  rmarkdown::html_document:
+    highlight: pygments
+    number_sections: no
+    self_contained: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+bibliography: biblio.bib
+---
+
+# Purpose of this document
+
+This R markdown file accompanies the twitter thread []() and provides the code to reproduce all computations.
+
+# Setup
+
+```{r, include=TRUE, echo=TRUE}
+# --------------------------------------------------------------
+# packages
+# --------------------------------------------------------------
+packs <- c("rpact", "knitr")    
+for (i in 1:length(packs)){library(packs[i], character.only = TRUE)}
+```
+
+# Code
+
+```{r, include=TRUE, echo=TRUE}
+# --------------------------------------------------------------
+
+```
+
+
+
+
+# References
